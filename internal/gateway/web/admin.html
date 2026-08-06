@@ -1,0 +1,144 @@
+{{define "admin.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fandom Google Ads Gateway</title>
+  <link rel="stylesheet" href="/admin/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Fandom Google Ads Gateway</h1>
+      <p>{{.Config.GatewayID}}</p>
+    </div>
+    <form method="post" action="/admin/logout">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <button class="secondary" type="submit">Sign out</button>
+    </form>
+  </header>
+  <main>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+    {{if .NewKey}}
+      <section class="critical">
+        <h2>Copy this connection key now</h2>
+        <p>It will not be displayed again.</p>
+        <code class="secret">{{.NewKey}}</code>
+      </section>
+    {{end}}
+
+    <section>
+      <h2>1. Connect Google Ads</h2>
+      <p>Use one method. Credentials remain encrypted inside this gateway.</p>
+      <details {{if eq .Config.Google.Mode "oauth"}}open{{end}}>
+        <summary>Google OAuth</summary>
+        <form method="post" action="/admin/google/oauth" class="stack">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <label>OAuth client ID<input name="oauth_client_id" value="{{if eq .Config.Google.Mode "oauth"}}{{.Config.Google.OAuthClientID}}{{end}}" required></label>
+          <label>OAuth client secret<input name="oauth_client_secret" type="password" autocomplete="off" placeholder="Enter again when changing settings" required></label>
+          <label>Google Ads developer token<input name="developer_token" type="password" autocomplete="off" required></label>
+          <label>Login customer ID<input name="login_customer_id" inputmode="numeric" value="{{.Config.Google.LoginCustomerID}}" required></label>
+          <label>Authorized redirect URL<input value="{{.CallbackURL}}" readonly></label>
+          <div class="actions">
+            <button type="submit">Save OAuth settings</button>
+            {{if and (eq .Config.Google.Mode "oauth") .Config.Google.OAuthClientID}}
+              <a class="button secondary" href="/admin/google/start">Authorize with Google</a>
+            {{end}}
+          </div>
+        </form>
+      </details>
+      <details {{if eq .Config.Google.Mode "service_account"}}open{{end}}>
+        <summary>Google service account</summary>
+        <form method="post" action="/admin/google/service-account" class="stack">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <label>Service account JSON<textarea name="service_account_json" rows="8" required placeholder="Paste the complete JSON key"></textarea></label>
+          <label>Google Ads developer token<input name="developer_token" type="password" autocomplete="off" required></label>
+          <label>Login customer ID<input name="login_customer_id" inputmode="numeric" value="{{.Config.Google.LoginCustomerID}}" required></label>
+          <button type="submit">Save service account</button>
+        </form>
+      </details>
+      {{if .GoogleConfigured}}
+        <form method="post" action="/admin/discover" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <button type="submit">Discover accounts and campaigns</button>
+        </form>
+      {{end}}
+    </section>
+
+    <section>
+      <h2>2. Choose what Fandom may access</h2>
+      {{if not .Accounts}}
+        <p>No accounts discovered yet.</p>
+      {{else}}
+        <form method="post" action="/admin/policy">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <label>Gateway name<input name="display_name" value="{{.Config.DisplayName}}" maxlength="120" required></label>
+          {{range .Accounts}}
+            {{if not .IsManager}}
+              {{$account := .}}
+              <article class="account">
+                <div class="account-heading">
+                  <div><strong>{{.DisplayName}}</strong><small>{{.CustomerID}}</small></div>
+                  <label class="check"><input type="checkbox" name="create:{{.CustomerID}}" {{if .AllowCreate}}checked{{end}}> Allow Fandom to create new campaigns</label>
+                </div>
+                {{if .Campaigns}}
+                  <table>
+                    <thead><tr><th>Campaign</th><th>Read</th><th>Write</th></tr></thead>
+                    <tbody>
+                    {{range campaigns .}}
+                      <tr>
+                        <td><strong>{{.Name}}</strong><small>{{.CampaignID}} &middot; {{.Status}}</small></td>
+                        <td><input aria-label="Read {{.Name}}" type="checkbox" name="read:{{$account.CustomerID}}:{{.CampaignID}}" {{if .Read}}checked{{end}}></td>
+                        <td><input aria-label="Write {{.Name}}" type="checkbox" name="write:{{$account.CustomerID}}:{{.CampaignID}}" {{if .Write}}checked{{end}}></td>
+                      </tr>
+                    {{end}}
+                    </tbody>
+                  </table>
+                {{else}}<p>No campaigns found.</p>{{end}}
+              </article>
+            {{end}}
+          {{end}}
+          <button type="submit">Save campaign access</button>
+        </form>
+      {{end}}
+    </section>
+
+    <section>
+      <h2>3. Connect Fandom</h2>
+      <p>Generate a key, then enter this gateway URL and the key in Fandom.</p>
+      <code>{{.BaseURL}}</code>
+      <form method="post" action="/admin/keys" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <label>Key name<input name="name" value="Fandom" maxlength="80"></label>
+        <button type="submit">Generate connection key</button>
+      </form>
+      {{if .Keys}}
+        <ul class="keys">
+        {{range .Keys}}
+          <li><span><strong>{{.Name}}</strong><small>Created {{date .CreatedAt}}</small></span>
+            <form method="post" action="/admin/keys/revoke">
+              <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+              <input type="hidden" name="id" value="{{.ID}}">
+              <button class="danger secondary" type="submit">Revoke</button>
+            </form>
+          </li>
+        {{end}}
+        </ul>
+      {{end}}
+    </section>
+
+    <section>
+      <h2>Recent activity</h2>
+      {{if .Audit}}
+        <table>
+          <thead><tr><th>Time</th><th>Action</th><th>Result</th></tr></thead>
+          <tbody>{{range .Audit}}<tr><td>{{date .At}}</td><td>{{.Action}}{{if .CustomerID}}<small>Account {{.CustomerID}}{{if .CampaignIDs}} &middot; Campaigns {{.CampaignIDs}}{{end}}</small>{{end}}</td><td>{{if .Allowed}}Allowed{{else}}Denied{{end}} ({{.Status}}){{if .Reason}}<small>{{.Reason}}</small>{{end}}</td></tr>{{end}}</tbody>
+        </table>
+      {{else}}<p>No activity yet.</p>{{end}}
+    </section>
+  </main>
+</body>
+</html>
+{{end}}

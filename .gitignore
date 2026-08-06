@@ -1,0 +1,5 @@
+/gateway
+/data/
+/.env
+*.log
+

@@ -1,0 +1,32 @@
+services:
+  gateway:
+    build: .
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:?Set the public HTTPS URL}
+      GATEWAY_MASTER_KEY: ${GATEWAY_MASTER_KEY:?Set a random 32-byte base64 key}
+      GATEWAY_ADMIN_PASSWORD: ${GATEWAY_ADMIN_PASSWORD:?Set a strong admin password}
+      GATEWAY_GOOGLE_ADS_API_VERSION: ${GATEWAY_GOOGLE_ADS_API_VERSION:-v24}
+      GATEWAY_DATA_PATH: /data/gateway.db
+      GATEWAY_LISTEN_ADDR: :8080
+    volumes:
+      - gateway-data:/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "/gateway", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  gateway-data:
