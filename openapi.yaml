@@ -1,0 +1,141 @@
+openapi: 3.1.0
+info:
+  title: Fandom Google Ads Gateway Protocol
+  version: 1.0.0
+  description: Customer-hosted, campaign-scoped transport used by Fandom.
+servers:
+  - url: https://google-ads-gateway.example.com
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      security: []
+      operationId: health
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+  /v1/metadata:
+    get:
+      operationId: metadata
+      responses:
+        "200":
+          description: The exact accounts and campaigns exposed to Fandom.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Metadata" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /v1/proxy:
+    post:
+      operationId: proxyGoogleAds
+      description: Sends one policy-checked Google Ads REST request. Writes require an Idempotency-Key header.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, minLength: 16, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [method, path]
+              properties:
+                method: { type: string, enum: [POST] }
+                path:
+                  type: string
+                  pattern: ^/v[0-9]+/customers/
+                body: { type: object }
+      responses:
+        "200":
+          {
+            description: Google Ads response; status and JSON body are passed through.
+          }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Error:
+      description: Structured error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, status, message]
+          properties:
+            code: { type: integer }
+            status: { type: string }
+            message: { type: string }
+    Metadata:
+      type: object
+      required:
+        - protocolVersion
+        - googleAdsApiVersion
+        - gatewayId
+        - displayName
+        - loginCustomerId
+        - accounts
+        - capabilities
+      properties:
+        protocolVersion: { type: string, const: "1.0" }
+        googleAdsApiVersion: { type: string, pattern: "^v[0-9]+$" }
+        gatewayId: { type: string, pattern: ^fgw_ }
+        displayName: { type: string }
+        loginCustomerId: { type: string, pattern: "^[0-9]+$" }
+        capabilities:
+          type: object
+          additionalProperties: { type: boolean }
+        accounts:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/Account" }
+    Account:
+      type: object
+      required: [customerId, displayName, isManager, allowCreate, campaigns]
+      properties:
+        customerId: { type: string, pattern: "^[0-9]+$" }
+        displayName: { type: string }
+        currencyCode: { type: string }
+        timeZone: { type: string }
+        isManager: { type: boolean }
+        parentCustomerId: { type: string, pattern: "^[0-9]+$" }
+        allowCreate: { type: boolean }
+        allCampaignsReadWrite:
+          type: boolean
+          description: Grants read and write access to every current and future campaign in this advertiser account.
+        campaigns:
+          type: array
+          items: { $ref: "#/components/schemas/Campaign" }
+    Campaign:
+      type: object
+      required: [campaignId, name, read, write]
+      properties:
+        campaignId: { type: string, pattern: "^[0-9]+$" }
+        name: { type: string }
+        status: { type: string }
+        read: { type: boolean }
+        write: { type: boolean }

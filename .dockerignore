@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+*.db
+*.pem
+*.key
+*.json
+data
+gateway
+gateway.exe
+*.log
+coverage

@@ -1,0 +1,9 @@
+/gateway
+/gateway.exe
+/data/
+/.env
+/.env.*
+!/.env.example
+/*.json
+*.log
+/coverage

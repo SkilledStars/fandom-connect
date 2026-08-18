@@ -1,0 +1,24 @@
+{{define "login.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gateway administration</title>
+  <link rel="stylesheet" href="/admin/style.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <h1>Fandom Google Ads Gateway</h1>
+    <p>Sign in to manage Google Ads access.</p>
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+    <form method="post" action="/admin/login">
+      <label for="password">Admin password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>
+{{end}}
+
