@@ -1134,25 +1134,71 @@ func (p *PolicyEngine) resolveAccountResourceCampaigns(ctx context.Context, cfg 
 
 	if resourceType == "custom_audience" {
 		// A CustomAudience can also affect campaigns transitively through a
-		// customer-scoped Audience. Resolve each containing Audience and then
-		// every campaign or asset group that consumes it.
-		query := fmt.Sprintf(
-			"SELECT audience.resource_name FROM audience WHERE audience.dimensions.audience_segments.segments.custom_audience.custom_audience = '%s'",
-			resourceName,
-		)
+		// customer-scoped Audience. Google's nested-dimension equality filter
+		// returned INVALID_ARGUMENT on the live v23 account, blocking reads,
+		// attachment, and edits. Read the supported dimensions message instead
+		// and find exact references locally. search follows every page; do not
+		// restrict this lookup to allowed campaigns or trust a stored creator,
+		// since another campaign may also use this shared segment.
+		query := "SELECT audience.resource_name, audience.dimensions FROM audience"
 		rows, err := p.google.search(ctx, cfg, customerID, query)
 		if err != nil {
 			return nil, fmt.Errorf("resolve custom audience transitive ownership: %w", err)
 		}
-		for _, row := range rows {
-			audienceResourceName := nestedString(row, "audience", "resourceName")
-			if audienceResourceName == "" {
-				continue
+		// Decode the selected structure strictly so an unexpected shape cannot
+		// be mistaken for an empty audience and authorize an unsafe update.
+		var compositions []struct {
+			Audience *struct {
+				ResourceName string `json:"resourceName"`
+				Dimensions   []struct {
+					AudienceSegments *struct {
+						Segments []struct {
+							CustomAudience *struct {
+								ResourceName string `json:"customAudience"`
+							} `json:"customAudience"`
+						} `json:"segments"`
+					} `json:"audienceSegments"`
+				} `json:"dimensions"`
+			} `json:"audience"`
+		}
+		raw, err := json.Marshal(rows)
+		if err != nil {
+			return nil, fmt.Errorf("encode transitive audience response: %w", err)
+		}
+		if err := json.Unmarshal(raw, &compositions); err != nil {
+			return nil, fmt.Errorf("decode transitive audience dimensions: %w", err)
+		}
+		seen := map[string]bool{}
+		for _, row := range compositions {
+			if row.Audience == nil {
+				return nil, errors.New("Google returned a missing transitive audience")
 			}
+			audienceResourceName := row.Audience.ResourceName
 			parsedCustomerID, collection, _, ok := parseCustomerResourceName(audienceResourceName)
 			if !ok || parsedCustomerID != customerID || collection != "audiences" {
 				return nil, errors.New("Google returned an invalid transitive audience resource name")
 			}
+			containsSegment := false
+			for _, dimension := range row.Audience.Dimensions {
+				if dimension.AudienceSegments == nil {
+					continue
+				}
+				for _, segment := range dimension.AudienceSegments.Segments {
+					if segment.CustomAudience == nil {
+						continue
+					}
+					reference := segment.CustomAudience.ResourceName
+					refCustomerID, refCollection, _, valid := parseCustomerResourceName(reference)
+					if !valid || refCustomerID != customerID || refCollection != "customAudiences" {
+						return nil, errors.New("Google returned an invalid custom audience reference")
+					}
+					containsSegment = containsSegment || reference == resourceName
+				}
+			}
+			if !containsSegment || seen[audienceResourceName] {
+				continue
+			}
+			seen[audienceResourceName] = true
 			ids, err := p.resolveAccountResourceCampaigns(ctx, cfg, customerID, "audience", audienceResourceName)
 			if err != nil {
 				return nil, err

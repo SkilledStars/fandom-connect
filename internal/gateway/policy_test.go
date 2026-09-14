@@ -1217,8 +1217,8 @@ func TestCustomAudienceWriteChecksCampaignLevelAndTransitiveAudienceAttachments(
 			return jsonResponse(http.StatusOK, `{"results":[]}`), nil
 		case strings.Contains(query, "FROM campaign_criterion"):
 			return jsonResponse(http.StatusOK, `{"results":[{"campaign":{"id":"111"},"campaignCriterion":{"customAudience":{"customAudience":"customers/1234567890/customAudiences/987"}}}]}`), nil
-		case strings.Contains(query, "FROM audience") && strings.Contains(query, "dimensions.audience_segments"):
-			return jsonResponse(http.StatusOK, `{"results":[{"audience":{"resourceName":"customers/1234567890/audiences/888"}}]}`), nil
+		case query == "SELECT audience.resource_name, audience.dimensions FROM audience":
+			return jsonResponse(http.StatusOK, `{"results":[{"audience":{"resourceName":"customers/1234567890/audiences/888","dimensions":[{"audienceSegments":{"segments":[{"customAudience":{"customAudience":"customers/1234567890/customAudiences/987"}}]}}]}}]}`), nil
 		case strings.Contains(query, "FROM ad_group_criterion") && strings.Contains(query, "audience.audience"):
 			return jsonResponse(http.StatusOK, `{"results":[]}`), nil
 		case strings.Contains(query, "FROM asset_group_signal"):
